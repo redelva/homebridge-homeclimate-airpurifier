@@ -1,6 +1,5 @@
 const WebSocket = require('ws');
 const axios = require('axios');
-
 let Service, Characteristic;
 let devices = [];
 
@@ -329,14 +328,18 @@ HomeClimateAirPurifier.prototype = {
                 'content-type': "application/json"
             }
         };
+
+        let that = this;
+
         //Send request
-        axios(options).then(function(response) {
-            console.log("load air info", response.data)
-            that.temperature = parseInt(response.data.miotTemperature,10);
-            that.aqi = parseInt(response.data.miotAqi,10);
-            that.pm25 = parseInt(response.data.miotPM2_5,10);
-            that.humidity = parseInt(response.data.miotSD,10);
-        }).catch(function (e){console.log(e)})
+        axios(options, function (response) {
+            that.temperature = response.data.miotTemperature;
+            that.aqi = response.data.miotAqi;
+            that.pm25 = response.data.miotPM2_5;
+            that.humidity = response.data.miotSD;
+        }).catch(function (e){
+            console.error(e, 'failed to load air info')
+        })
     },
 
     getActiveState: function(callback) {
