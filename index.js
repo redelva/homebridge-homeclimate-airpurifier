@@ -1,5 +1,6 @@
-var WebSocket = require('ws');
-var request = require("request");
+const WebSocket = require('ws');
+const axios = require('axios');
+
 let Service, Characteristic;
 let devices = [];
 
@@ -45,7 +46,7 @@ function HomeClimateAirPurifier(log, config) {
     this.token = config.token;
 
     //1616594775042
-    this.url = "ws://cloudh5.51miaomiao.com/servlet/SwapDataServlet?cuId=" + this.cuId + "~" + this.puId + "~" + this.token + "~" + this.model + "~"+new Date().getTime();
+    this.url = "ws://cloudh5.51miaomiao.com/servlet/SwapDataServlet?cuId=" + this.cuId + "~" + this.puId + "~" + this.token + "~" + this.model + "~1616594775042";
 
     this.name = config.name || 'Air Purifier';
     this.showAirQuality = config.showAirQuality || false;
@@ -170,21 +171,15 @@ HomeClimateAirPurifier.prototype = {
         let log = this.log;
         let that = this;
 
-        this.ws = new WebSocket(this.url, function(error) {
-            if(error){
-                log('Failed to discover Home Climate Air Purifier at %s, error is %s', that.url, error);
-                console.log('Will retry after 30 seconds');
-                setTimeout(function() {
-                    that.discover();
-                }, 30000);
-            }else {
-                //start heart beat
-                setInterval(function () {
-                    that.ws.send("{\"opType\":\"2\",\"actionParams\":\"01\"}");
+        this.ws = new WebSocket(this.url);
 
-                    that.ws.loadState()
-                }, 1000)
-            }
+        this.ws.on('open', function open() {
+            //start heart beat
+            setInterval(function () {
+                that.ws.send("{\"opType\":\"2\",\"actionParams\":\"01\"}");
+
+                that.ws.loadState()
+            }, 1000)
         });
 
         this.ws.on('error', function (e) {
@@ -208,8 +203,8 @@ HomeClimateAirPurifier.prototype = {
             }
         });
 
-        this.ws.getLED = async function(){
-            return this.state.sleepMode
+        this.ws.getLED = function(){
+            return that.state.sleepMode
         }
 
         this.ws.setLED = function(state, cb){
@@ -221,7 +216,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         this.ws.getSpeed = function(){
-            return this.state.airFlowRate
+            return that.state.airFlowRate
         }
 
         this.ws.setSpeed = function(speed, cb){
@@ -230,7 +225,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         this.ws.getPower = function(){
-            return this.state.activeMode
+            return that.state.activeMode
         }
 
         this.ws.setPower = async function(state, cb){
@@ -275,13 +270,13 @@ HomeClimateAirPurifier.prototype = {
         this.ws.parseState= function(actionResult){
             let resultCode = actionResult.resultCode;
             if (resultCode === SUCCESS_RESULT_CODE) {
-                let kindId = actionResult.puKindId;
-                let modelId = actionResult.puModel;
-                let puId = actionResult.puId;
+                // let kindId = actionResult.puKindId;
+                // let modelId = actionResult.puModel;
+                // let puId = actionResult.puId;
                 let jsonDetails = JSON.parse(actionResult.jsonResults);
-                let _type_model_puId = kindId + "_" + modelId + "_" + puId;
-                let type_model_puId = $("#type_model_puId").val();
-                console.log(_type_model_puId+","+type_model_puId);
+                // let _type_model_puId = kindId + "_" + modelId + "_" + puId;
+                // let type_model_puId = $("#type_model_puId").val();
+                // console.log(_type_model_puId+","+type_model_puId);
 
                 //更新插件UI
                 let ack = jsonDetails.actionNameAck;
@@ -322,29 +317,26 @@ HomeClimateAirPurifier.prototype = {
     },
 
     getAirInfo: function() {
+        let that = this;
         //cloudh5.51miaomiao.com/service?time=1616594775513&code=getPm25AndWeather&province=%E4%B8%8A%E6%B5%B7%E5%B8%82&city=%E4%B8%8A%E6%B5%B7%E5%B8%82
 
         const url = "http://cloudh5.51miaomiao.com/service?time=1616594775513&code=getPm25AndWeather&province=%E4%B8%8A%E6%B5%B7%E5%B8%82&city=%E4%B8%8A%E6%B5%B7%E5%B8%82"
 
         const options = {
-            url,
+             url,
             method: 'get',
             headers: {
                 'content-type': "application/json"
             }
         };
         //Send request
-        request(options, function (error, response, body) {
-            if (error) {
-                console.error(error, 'failed to load air info')
-            } else {
-                const data = JSON.parse(body)
-                this.temperature = data.miotTemperature;
-                this.aqi = data.miotAqi;
-                this.pm25 = data.miotPM2_5;
-                this.humidity = data.miotSD;
-            }
-        })
+        axios(options).then(function(response) {
+            console.log("load air info", response.data)
+            that.temperature = parseInt(response.data.miotTemperature,10);
+            that.aqi = parseInt(response.data.miotAqi,10);
+            that.pm25 = parseInt(response.data.miotPM2_5,10);
+            that.humidity = parseInt(response.data.miotSD,10);
+        }).catch(function (e){console.log(e)})
     },
 
     getActiveState: function(callback) {
@@ -420,17 +412,19 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
+        let that = this;
+
         this.log.debug('setTargetAirPurifierState: %s', state === 0 ? 'manual' : 'auto');
 
         if(state === 0){
             // this.targetPurifierState = 'manual';
             this.setLED(this.state.sleepMode, function (){
-                this.setRotationSpeed(this.state.airFlowRate, callback)
+                that.setRotationSpeed(that.state.airFlowRate, callback)
             })
         } else if (state === 1){
             // this.targetPurifierState = 'auto';
             this.setLED(1, function (){
-                this.setRotationSpeed(4, callback)
+                that.setRotationSpeed(4, callback)
             })
         }
     },
@@ -481,7 +475,9 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        callback(null, this.state.airFlowRate)
+        const speed = this.ws.getSpeed();
+
+        callback(null, speed)
 
         // this.device.favoriteLevel()
         //     .then(level => {
@@ -498,7 +494,7 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.setRotationSpeed(speed, callback)
+        this.ws.setSpeed(speed, callback)
 
         // // Overwrite to manual mode
         // if (this.mode != 'favorite') {
@@ -604,18 +600,18 @@ HomeClimateAirPurifier.prototype = {
         this.humiditySensorService.getCharacteristic(Characteristic.CurrentRelativeHumidity).updateValue(value);
     },
 
-    getLED: async function(callback) {
+    getLED: function(callback) {
         if (!this.ws) {
             callback(new Error('No Air Purifier is discovered.'));
             return;
         }
 
-        const state = await this.ws.led();
+        const state = this.ws.getLED();
         this.log.debug('getLED: %s', state);
         callback(null, state);
     },
 
-    setLED: async function(state, callback) {
+    setLED: function(state, callback) {
         if (!this.ws) {
             callback(new Error('No Air Purifier is discovered.'));
             return;
@@ -623,9 +619,7 @@ HomeClimateAirPurifier.prototype = {
 
         this.log.debug('setLED: %s', state);
 
-        await this.ws.led(state)
-            .then(state => callback(null))
-            .catch(err => callback(err));
+        this.ws.setLED(state,callback);
     },
 
     identify: function(callback) {
