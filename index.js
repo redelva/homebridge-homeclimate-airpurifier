@@ -329,8 +329,6 @@ HomeClimateAirPurifier.prototype = {
             }
         };
 
-        let that = this;
-
         //Send request
         axios(options, function (response) {
             that.temperature = response.data.miotTemperature;
