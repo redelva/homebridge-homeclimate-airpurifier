@@ -43,9 +43,10 @@ function HomeClimateAirPurifier(log, config) {
     this.model = config.model;//318
     this.kindId = config.kindId;//300
     this.token = config.token;
+    this.ts = config.ts;
 
     //1616594775042
-    this.url = "ws://cloudh5.51miaomiao.com/servlet/SwapDataServlet?cuId=" + this.cuId + "~" + this.puId + "~" + this.token + "~" + this.model + "~1616594775042";
+    this.url = "ws://cloudh5.51miaomiao.com/servlet/SwapDataServlet?cuId=" + this.cuId + "~" + this.puId + "~" + this.token + "~" + this.model + "~" + this.ts;
 
     this.name = config.name || 'Air Purifier';
     this.showAirQuality = config.showAirQuality || false;
@@ -60,9 +61,9 @@ function HomeClimateAirPurifier(log, config) {
     this.ws = null;
     this.state = {
         accumulateWorkTime:0, //累计工作时间
-        airFlowRate:0, //风量
+        airFlowRate:50, //风量
         activeMode:0,//开关机状态
-        sleepMode:0,//睡眠
+        sleepMode:1,//睡眠
         airValveMode:0,//风阀开关
         airTemperature:0,//送风温度
     };
@@ -97,10 +98,10 @@ function HomeClimateAirPurifier(log, config) {
         .on('get', this.getTargetAirPurifierState.bind(this))
         .on('set', this.setTargetAirPurifierState.bind(this));
 
-    // this.service
-    //     .getCharacteristic(Characteristic.LockPhysicalControls)
-    //     .on('get', this.getLockPhysicalControls.bind(this))
-    //     .on('set', this.setLockPhysicalControls.bind(this));
+    this.service
+        .getCharacteristic(Characteristic.LockPhysicalControls)
+        .on('get', this.getLockPhysicalControls.bind(this))
+        .on('set', this.setLockPhysicalControls.bind(this));
 
     this.service
         .getCharacteristic(Characteristic.RotationSpeed)
@@ -163,21 +164,27 @@ function HomeClimateAirPurifier(log, config) {
 
     this.discover();
     this.getAirInfo();
+    // this.loadRoomInfo();
 }
 
 HomeClimateAirPurifier.prototype = {
     discover: function() {
-        let log = this.log;
+        let log = console.log;
         let that = this;
 
         this.ws = new WebSocket(this.url);
 
+        console.log('start connect to server')
+
         this.ws.on('open', function open() {
+
+            console.log('success connect to server')
+
+            that.loadStates()
+
             //start heart beat
             setInterval(function () {
                 that.ws.send("{\"opType\":\"2\",\"actionParams\":\"01\"}");
-
-                that.ws.loadState()
             }, 1000)
         });
 
@@ -190,110 +197,51 @@ HomeClimateAirPurifier.prototype = {
         });
 
         this.ws.on('message', function(msg, flags) {
-            // {"actionCode":"updatePu","id":0,"jsonResults":"{\"wd_state\":21,\"fl_state\":0,\"ljgzsj_state\":6,\"state\":0,\"ifOpen3\":0,\"ifOpen2\":1,\"ifOpen1\":0}","location":"上海市","puFactoryID":0,"puId":213444,"puKindId":300,"puModel":318,"puName":"家环境新鲜空气机","resultCode":1,"resultCodeInfo":""}
+
+            console.log('receiving data', msg);
+
             let data = JSON.parse(msg);
             let actionCode = data.actionCode;
+            let resultCode = data.resultCode;
             if (actionCode === 'updateAd') {
 
             } else if (actionCode === 'updatePu') {
-                that.ws.parseState(data);
-            } else if (actionCode === 'Heart_Beat') {
-                //todo nothing
-            }
-        });
+                // let actionResult = JSON.parse(data.jsonResults)
 
-        this.ws.getLED = function(){
-            return that.state.sleepMode
-        }
+                if (resultCode === SUCCESS_RESULT_CODE) {
+                    // let kindId = actionResult.puKindId;
+                    // let modelId = actionResult.puModel;
+                    // let puId = actionResult.puId;
+                    let jsonDetails = JSON.parse(data.jsonResults);
+                    // let _type_model_puId = kindId + "_" + modelId + "_" + puId;
+                    // let type_model_puId = $("#type_model_puId").val();
+                    // console.log(_type_model_puId+","+type_model_puId);
 
-        this.ws.setLED = function(state, cb){
-            if (state === 0) {
-                that.ws.doAction(final_318_cmd05, {"message":"1"}, cb);
-            } else if (state === 1) {
-                that.ws.doAction(final_318_cmd05, {"message":"0"}, cb);
-            }
-        }
-
-        this.ws.getSpeed = function(){
-            return that.state.airFlowRate
-        }
-
-        this.ws.setSpeed = function(speed, cb){
-            // doAction(final_318_cmd03, '{\"message\":\"' + speedValue + '\"}');
-            that.ws.doAction(final_318_cmd03, {"message":speed}, cb)
-        }
-
-        this.ws.getPower = function(){
-            return that.state.activeMode
-        }
-
-        this.ws.setPower = async function(state, cb){
-            function powerOn(cb) {
-                if(that.state.accumulateWorkTime < 5000){
-                    that.ws.doAction(final_318_cmd02, '{"message":1}', cb);
-                }else{
-                    console.warn("需要更新滤芯了")
-                }
-            }
-
-            function powerOff(cb) {
-                that.ws.doAction(final_318_cmd02, '{"message":0}', cb);
-            }
-
-            if(state === 0 ){
-                powerOff(cb)
-            }else{
-                powerOn(cb)
-            }
-        }
-
-        this.ws.loadState = function(){
-            that.ws.doAction(final_318_getMainState, {})
-        }
-
-        this.ws.doAction = function (doActionName, jsonParams, cb) {
-            let jsonParamsVar = JSON.stringify(jsonParams);
-            jsonParamsVar = jsonParamsVar.replace("\"{", "{").replace("}\"", "}");
-            let contextJson = {
-                'actionName': ('\'' + doActionName + '\''),
-                'actionParams': ('\'' + jsonParamsVar + '\''),
-                'id': that.puId.toString(),
-                'kindId': that.kindId.toString(),
-                'modelId': that.model.toString()
-            };
-
-            that.ws.send(JSON.stringify(contextJson).replace(" ", ""));
-            !!cb && cb()
-        }
-
-        this.ws.parseState= function(actionResult){
-            let resultCode = actionResult.resultCode;
-            if (resultCode === SUCCESS_RESULT_CODE) {
-                // let kindId = actionResult.puKindId;
-                // let modelId = actionResult.puModel;
-                // let puId = actionResult.puId;
-                let jsonDetails = JSON.parse(actionResult.jsonResults);
-                // let _type_model_puId = kindId + "_" + modelId + "_" + puId;
-                // let type_model_puId = $("#type_model_puId").val();
-                // console.log(_type_model_puId+","+type_model_puId);
-
-                //更新插件UI
-                let ack = jsonDetails.actionNameAck;
-                if (ack === actionNameAck_refreshPuState) {
-                    let state = jsonDetails.state;
-                    if(state !== 1){
-                        console.log('设备已离线 ');
-                        return;
+                    //更新插件UI
+                    let ack = jsonDetails.actionNameAck;
+                    if (ack === actionNameAck_refreshPuState) {
+                        let state = jsonDetails.state;
+                        if (state !== 1) {
+                            console.log('设备已离线 ');
+                            return;
+                        }
                     }
 
-                    this.state = {
+                    that.state = {
                         accumulateWorkTime:jsonDetails.ljgzsj_state, //累计工作时间
                         airFlowRate:jsonDetails.fl_state, //风量
                         activeMode:jsonDetails.ifOpen1,//开关机状态
-                        sleepMode:jsonDetails.ifOpen1,//睡眠
+                        sleepMode:jsonDetails.ifOpen2,//睡眠
                         airValveMode:jsonDetails.ifOpen3,//风阀开关
                         airTemperature:jsonDetails.wd_state,//送风温度
                     }
+
+                    // that.updateCurrentAirPurifierState();
+                    that.updateActiveState(jsonDetails.ifOpen1)
+                    that.updateLockPhysicalControlsState(jsonDetails.ifOpen3)
+                    that.updateRotationSpeedState(jsonDetails.fl_state)
+                    that.updateLEDState(jsonDetails.ifOpen2)
+
                 } else if (resultCode === FAIL_RESULT_CODE) {
                     console.log('数据解析回复失败');
                 } else if (resultCode === SEND_SUCCESS_RESULT_CODE) {
@@ -311,15 +259,84 @@ HomeClimateAirPurifier.prototype = {
                 } else {
                     console.log('未知错误[' + resultCode + ']');
                 }
+            } else if (actionCode === 'Heart_Beat') {
+                //todo nothing
+            }
+
+            // console.log('this', this.state)
+            // console.log('that', that.state)
+        });
+
+        this.ws.get = function (name){
+            switch (name){
+                case 'LED':
+                    return this.state.sleepMode
+                case 'speed':
+                    return this.state.airFlowRate
+                case 'lock':
+                    return this.state.airValveMode
+                case 'power':
+                    return this.state.activeMode
+            }
+            return this.state[name]
+        }
+
+        this.ws.set = function (name, state, cb){
+
+            switch (name){
+                case 'LED':
+                    that.ws.doAction(final_318_cmd05, {"message":state.toString()}, cb)
+                    break
+                case 'speed':
+                    that.ws.doAction(final_318_cmd03, {"message":state}, cb)
+                    break
+                case 'lock':
+                    that.ws.doAction(final_318_cmd04, {"message":state}, cb)
+                    break
+                case 'power':
+                    if(that.state.accumulateWorkTime > 5000){
+                        console.warn("需要更新滤芯了")
+                    }
+
+                    that.ws.doAction(final_318_cmd02, {"message":state}, cb);
+                    break
             }
         }
+
+        this.ws.doAction = function (doActionName, jsonParams, cb) {
+            let jsonParamsVar = JSON.stringify(jsonParams);
+            jsonParamsVar = jsonParamsVar.replace("\"{", "{").replace("}\"", "}");
+            let contextJson = {
+                'actionName': ('\'' + doActionName + '\''),
+                'actionParams': ('\'' + jsonParamsVar + '\''),
+                'id': that.puId.toString(),
+                'kindId': that.kindId.toString(),
+                'modelId': that.model.toString()
+            };
+
+            that.ws.send(JSON.stringify(contextJson).replace(" ", ""), function (data){
+                // console.log('ws send callback', data);
+                setTimeout(function (){
+                    !!cb && cb()
+                }, 50)
+            });
+        }
+    },
+
+    loadStates: function(callback){
+        if (!this.ws) {
+            callback(new Error('No Air Purifier is discovered.'));
+            return;
+        }
+
+        this.ws.doAction(final_318_getMainState, {}, callback)
     },
 
     getAirInfo: function() {
         let that = this;
         //cloudh5.51miaomiao.com/service?time=1616594775513&code=getPm25AndWeather&province=%E4%B8%8A%E6%B5%B7%E5%B8%82&city=%E4%B8%8A%E6%B5%B7%E5%B8%82
 
-        const url = "http://cloudh5.51miaomiao.com/service?time=1616594775513&code=getPm25AndWeather&province=%E4%B8%8A%E6%B5%B7%E5%B8%82&city=%E4%B8%8A%E6%B5%B7%E5%B8%82"
+        const url = "http://cloudh5.51miaomiao.com/service?time=" + new Date().getTime() + "&code=getPm25AndWeather&province=%E4%B8%8A%E6%B5%B7%E5%B8%82&city=%E4%B8%8A%E6%B5%B7%E5%B8%82"
 
         const options = {
              url,
@@ -331,6 +348,9 @@ HomeClimateAirPurifier.prototype = {
 
         //Send request
         axios(options, function (response) {
+
+            console.log('air info', response.data)
+
             that.temperature = response.data.miotTemperature;
             that.aqi = response.data.miotAqi;
             that.pm25 = response.data.miotPM2_5;
@@ -348,8 +368,7 @@ HomeClimateAirPurifier.prototype = {
 
         const state = (this.state.activeMode) ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
 
-        this.log.debug('getActiveState: Mode -> %s', this.mode);
-        this.log.debug('getActiveState: State -> %s', state);
+        this.log('getActiveState: State -> %s', state);
         callback(null, state);
     },
 
@@ -359,17 +378,15 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.log.debug('setActiveState: %s', state);
+        this.log('setActiveState: %s', state);
 
-        this.ws.setPower(state,callback);
+        this.ws.set('power',state,callback);
     },
 
     updateActiveState: function(mode) {
-        const state = (this.state.activeMode !== 'idle') ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
-        this.state.activeMode = mode;
+        const state = mode ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
 
-        this.log.debug('updateActiveState: Mode -> %s', mode);
-        this.log.debug('updateActiveState: State -> %s', state);
+        this.log('updateActiveState: State -> %s, Mode -> %s', state, mode);
 
         this.service.getCharacteristic(Characteristic.Active).updateValue(state);
     },
@@ -380,18 +397,22 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        const state = (this.state.activeMode === 'idle') ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
-        this.log.debug('getCurrentAirPurifierState: Mode -> %s', this.state);
-        this.log.debug('getCurrentAirPurifierState: State -> %s', state);
-        callback(null, state);
+        let that = this;
+
+        // this.loadStates(function (){
+        //     console.log("load states callback", that.state)
+
+            const state = (that.state.activeMode === 0) ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
+            that.log('getCurrentAirPurifierState: State -> %s', state);
+            callback(null, state);
+        // });
     },
 
     updateCurrentAirPurifierState: function(mode) {
-        const state = (mode === 'idle') ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
+        const state = mode ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
         this.state.activeMode = mode;
 
-        this.log.debug('updateCurrentAirPurifierState: Mode ->  %s', mode);
-        this.log.debug('updateCurrentAirPurifierState: State ->  %s', state);
+        this.log('updateCurrentAirPurifierState: State ->  %s', state);
         this.service.getCharacteristic(Characteristic.CurrentAirPurifierState).updateValue(state);
     },
 
@@ -402,8 +423,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         const state = (this.state.airFlowRate === 4 && this.state.sleepMode === 1) ? Characteristic.TargetAirPurifierState.AUTO : Characteristic.TargetAirPurifierState.MANUAL;
-        this.log.debug('getTargetAirPurifierState: Mode -> %s', this.state);
-        this.log.debug('getTargetAirPurifierState: State -> %s', state);
+        this.log('getTargetAirPurifierState: State -> %s', state);
         callback(null, state);
     },
 
@@ -413,20 +433,19 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
+        this.log('setTargetAirPurifierState: %s', state);
+
         let that = this;
-
-        this.log.debug('setTargetAirPurifierState: %s', state === 0 ? 'manual' : 'auto');
-
         if(state === 0){
-            // this.targetPurifierState = 'manual';
-            this.setLED(this.state.sleepMode, function (){
-                that.setRotationSpeed(that.state.airFlowRate, callback)
-            })
+            console.log('manual mode', this.state.airFlowRate)
+            // this.ws.set('LED', this.state.sleepMode, function (){
+            this.ws.set('speed',this.state.airFlowRate, callback)
+            // })
         } else if (state === 1){
-            // this.targetPurifierState = 'auto';
-            this.setLED(1, function (){
-                that.setRotationSpeed(4, callback)
-            })
+            console.log('auto mode', this.state.airFlowRate)
+            // this.ws.set('LED', 1, function (){
+            this.ws.set('speed', 4, callback)
+            // })
         }
     },
 
@@ -434,41 +453,41 @@ HomeClimateAirPurifier.prototype = {
         const state = (mode !== 'favorite') ? Characteristic.TargetAirPurifierState.AUTO : Characteristic.TargetAirPurifierState.MANUAL;
         this.mode = mode;
 
-        this.log.debug('updateTargetAirPurifierState: Mode -> %s', mode);
-        this.log.debug('updateTargetAirPurifierState: State -> %s', state);
+        this.log('updateTargetAirPurifierState: Mode -> %s', mode);
+        this.log('updateTargetAirPurifierState: State -> %s', state);
 
         this.service.getCharacteristic(Characteristic.TargetAirPurifierState).updateValue(state);
     },
 
-    // getLockPhysicalControls: async function(callback) {
-    //     if (!this.ws) {
-    //         callback(new Error('No Air Purifier is discovered.'));
-    //         return;
-    //     }
-    //
-    //     await this.ws.call('get_prop', ['child_lock'])
-    //         .then(result => {
-    //             const state = (result[0] === 'on') ? Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED;
-    //             this.log.debug('getLockPhysicalControls: %s', state);
-    //             callback(null, state);
-    //         })
-    //         .catch(err => callback(err));
-    // },
-    //
-    // setLockPhysicalControls: async function(state, callback) {
-    //     if (!this.ws) {
-    //         callback(new Error('No Air Purifier is discovered.'));
-    //         return;
-    //     }
-    //
-    //     this.log.debug('setLockPhysicalControls: %s', state);
-    //
-    //     await this.ws.call('set_child_lock', [(state) ? 'on' : 'off'])
-    //         .then(result => {
-    //             (result[0] === 'ok') ? callback(): callback(new Error(result[0]));
-    //         })
-    //         .catch(err => callback(err));
-    // },
+    getLockPhysicalControls: async function(callback) {
+        if (!this.ws) {
+            callback(new Error('No Air Purifier is discovered.'));
+            return;
+        }
+
+        const state = this.state.airValveMode ? Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED;
+        this.log('getLockPhysicalControls: %s', state);
+        callback(null, state);
+    },
+
+    setLockPhysicalControls: async function(state, callback) {
+        if (!this.ws) {
+            callback(new Error('No Air Purifier is discovered.'));
+            return;
+        }
+
+        this.log('setLockPhysicalControls: %s', state);
+
+        this.ws.set('lock',state, callback)
+    },
+
+    updateLockPhysicalControlsState: function(mode) {
+        const state = mode ? Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED;
+
+        this.log('updateLockPhysicalControlsState: State -> %s', state);
+
+        this.service.getCharacteristic(Characteristic.LockPhysicalControls).updateValue(state);
+    },
 
     getRotationSpeed: function(callback) {
         if (!this.ws) {
@@ -476,17 +495,30 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        const speed = this.ws.getSpeed();
+        // console.log(this)
 
-        callback(null, speed)
+        const speed = this.state.airFlowRate;
 
-        // this.device.favoriteLevel()
-        //     .then(level => {
-        //         const speed = Math.ceil(level * 6.25);
-        //         this.log.debug('getRotationSpeed: %s', speed);
-        //         callback(null, speed);
-        //     })
-        //     .catch(err => callback(err));
+        this.log('getRotationSpeed: %s', speed);
+
+        let levels = [
+            [90, 100, 8],
+            [77, 89, 7],
+            [64, 76, 6],
+            [51, 63, 5],
+            [38, 50, 4],
+            [25, 37, 3],
+            [12, 24, 2],
+            [1, 11, 1],
+            [0, 0 , 0]
+        ];
+
+        //Set fan speed based on percentage passed
+        for(var item of levels){
+            if(speed === item[2] ){
+                callback(null,item[0]+2)
+            }
+        }
     },
 
     setRotationSpeed: function(speed, callback) {
@@ -495,23 +527,34 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.ws.setSpeed(speed, callback)
+        this.log('setRotationSpeed: %s', speed);
 
-        // // Overwrite to manual mode
-        // if (this.mode != 'favorite') {
-        //     this.device.setMode('favorite')
-        //         .then()
-        //         .catch(err => callback(err));
-        // }
-        //
-        // // Set favorite level
-        // const level = Math.ceil(speed / 6.25);
-        //
-        // this.log.debug('setRotationSpeed: %s', level);
-        //
-        // this.device.setFavoriteLevel(level)
-        //     .then(mode => callback(null))
-        //     .catch(err => callback(err));
+        let levels = [
+            [90, 100, 8],
+            [77, 89, 7],
+            [64, 76, 6],
+            [51, 63, 5],
+            [38, 50, 4],
+            [25, 37, 3],
+            [12, 24, 2],
+            [1, 11, 1],
+            [0, 0 , 0]
+        ];
+
+        //Set fan speed based on percentage passed
+        for(var item of levels){
+            if(speed >= item[0] && speed <= item[1]){
+                this.ws.set('speed', item[2], callback)
+            }
+        }
+    },
+
+    updateRotationSpeedState: function(speed) {
+        let levels = [0,1,12,25,38,51,64,77,90]
+
+        this.log('updateRotationSpeedState: Speed -> %s', levels[speed]+2);
+
+        this.service.getCharacteristic(Characteristic.RotationSpeed).updateValue(levels[speed]+2);
     },
 
     getAirQuality: function(callback) {
@@ -520,7 +563,7 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.log.debug('getAirQuality: %s', this.aqi);
+        this.log('getAirQuality: %s', this.aqi);
 
         for (var item of this.levels) {
             if (this.aqi >= item[0]) {
@@ -536,7 +579,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         this.aqi = value;
-        this.log.debug('updateAirQuality: %s', value);
+        this.log('updateAirQuality: %s', value);
 
         for (var item of this.levels) {
             if (value >= item[0]) {
@@ -552,7 +595,7 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.log.debug('getPM25: %s', this.pm25);
+        this.log('getPM25: %s', this.pm25);
 
         callback(null, this.pm25);
     },
@@ -563,7 +606,7 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.log.debug('getTemperature: %s', this.temperature);
+        this.log('getTemperature: %s', this.temperature);
 
         callback(null, this.temperature);
     },
@@ -574,7 +617,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         this.temperature = value;
-        this.log.debug('updateTemperature: %s', value);
+        this.log('updateTemperature: %s', value);
 
         this.temperatureSensorService.getCharacteristic(Characteristic.CurrentTemperature).updateValue(value);
     },
@@ -585,7 +628,7 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        this.log.debug('getHumidity: %s', this.humidity);
+        this.log('getHumidity: %s', this.humidity);
 
         callback(null, this.humidity);
     },
@@ -596,7 +639,7 @@ HomeClimateAirPurifier.prototype = {
         }
 
         this.humidity = value;
-        this.log.debug('updateHumidity: %s', value);
+        this.log('updateHumidity: %s', value);
 
         this.humiditySensorService.getCharacteristic(Characteristic.CurrentRelativeHumidity).updateValue(value);
     },
@@ -607,9 +650,9 @@ HomeClimateAirPurifier.prototype = {
             return;
         }
 
-        const state = this.ws.getLED();
-        this.log.debug('getLED: %s', state);
-        callback(null, state);
+        const state = this.state.sleepMode;
+        this.log('getLED: %s', state);
+        callback(null, state !==1);
     },
 
     setLED: function(state, callback) {
@@ -617,10 +660,21 @@ HomeClimateAirPurifier.prototype = {
             callback(new Error('No Air Purifier is discovered.'));
             return;
         }
+        if (this.showLED && !this.state.activeMode){
 
-        this.log.debug('setLED: %s', state);
+            this.log('setLED: %s', state);
 
-        this.ws.setLED(state,callback);
+            this.ws.set('LED', state ? 1 : 0,callback);
+        }
+    },
+
+    updateLEDState: function (state){
+        if (this.showLED) {
+
+            this.log('updateLEDState: %s', state);
+
+            this.lightBulbService.getCharacteristic(Characteristic.On).updateValue(state!==1);
+        }
     },
 
     identify: function(callback) {
