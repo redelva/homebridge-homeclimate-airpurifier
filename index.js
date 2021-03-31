@@ -186,6 +186,10 @@ HomeClimateAirPurifier.prototype = {
             setInterval(function () {
                 that.ws.send("{\"opType\":\"2\",\"actionParams\":\"01\"}");
             }, 1000)
+
+            setInterval(function (){
+                that.getAirInfo()
+            }, 2 *60 *60 *1000)
         });
 
         this.ws.on('error', function (e) {
@@ -347,8 +351,12 @@ HomeClimateAirPurifier.prototype = {
             }
         };
 
+        console.log("url",url)
+
         //Send request
-        axios(options, function (response) {
+        axios.get(url,{
+            'content-type': "application/json"
+        }).then(function (response) {
 
             console.log('air info', response.data)
 
@@ -356,6 +364,9 @@ HomeClimateAirPurifier.prototype = {
             that.aqi = response.data.miotAqi;
             that.pm25 = response.data.miotPM2_5;
             that.humidity = response.data.miotSD;
+
+            that.updateAirQuality(response.data.miotAqi,response.data.miotPM2_5)
+
         }).catch(function (e){
             console.error(e, 'failed to load air info')
         })
@@ -574,7 +585,7 @@ HomeClimateAirPurifier.prototype = {
         }
     },
 
-    updateAirQuality: function(value) {
+    updateAirQuality: function(value, pm25) {
         if (!this.showAirQuality) {
             return;
         }
@@ -588,6 +599,9 @@ HomeClimateAirPurifier.prototype = {
                 return;
             }
         }
+
+        this.airQualitySensorService
+            .getCharacteristic(Characteristic.PM2_5Density).updateValue(pm25);
     },
 
     getPM25: function(callback) {
