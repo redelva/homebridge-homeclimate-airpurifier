@@ -241,6 +241,7 @@ HomeClimateAirPurifier.prototype = {
                     that.updateLockPhysicalControlsState(jsonDetails.ifOpen3)
                     that.updateRotationSpeedState(jsonDetails.fl_state)
                     that.updateLEDState(jsonDetails.ifOpen2)
+                    that.updateCurrentAirPurifierState(jsonDetails.ifOpen1)
 
                 } else if (resultCode === FAIL_RESULT_CODE) {
                     console.log('数据解析回复失败');
@@ -409,8 +410,8 @@ HomeClimateAirPurifier.prototype = {
     },
 
     updateCurrentAirPurifierState: function(mode) {
-        const state = mode ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
-        this.state.activeMode = mode;
+        const state = !mode ? Characteristic.CurrentAirPurifierState.INACTIVE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
+        // this.state.activeMode = mode;
 
         this.log('updateCurrentAirPurifierState: State ->  %s', state);
         this.service.getCharacteristic(Characteristic.CurrentAirPurifierState).updateValue(state);
