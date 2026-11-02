@@ -2,7 +2,7 @@
   "name": "homebridge-homeclimate-airpurifier",
   "displayName": "HomeClimate AirPurifier",
   "type": "module",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "private": false,
   "description": "Home Climate air purifier plugin for Homebridge.",
   "author": "Guoqing Lu",

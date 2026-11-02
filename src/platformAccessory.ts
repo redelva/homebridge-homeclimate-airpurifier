@@ -650,7 +650,7 @@ export class AirPurifierAccessory {
 
   async getSleepMode(): Promise<CharacteristicValue> {
     this.assertConnected();
-    const state = this.state.sleepMode !== 1;
+    const state = this.state.sleepMode === 1;
     this.platform.log.debug('Get Characteristic Sleep Mode On -> %s', state);
     return state;
   }
@@ -659,7 +659,7 @@ export class AirPurifierAccessory {
     this.assertConnected();
     if (this.switchService && this.state.activeMode === 1) {
       this.platform.log.debug('Set Characteristic Sleep Mode On -> %s', value);
-      await this.setDeviceState('sleep', value ? 1 : 0);
+      await this.setDeviceState('sleep', value ? 0 : 1);
     }
   }
 
@@ -667,7 +667,7 @@ export class AirPurifierAccessory {
     if (!this.switchService) {
       return;
     }
-    this.platform.log.debug('Update Characteristic Sleep Mode On -> %s', sleepMode === 1);
-    this.switchService.getCharacteristic(this.platform.Characteristic.On).updateValue(sleepMode === 1);
+    this.platform.log.debug('Update Characteristic Sleep Mode On -> %s', sleepMode !== 1);
+    this.switchService.getCharacteristic(this.platform.Characteristic.On).updateValue(sleepMode !== 1);
   }
 }
