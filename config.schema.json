@@ -1,0 +1,47 @@
+{
+  "pluginAlias": "HomeClimate",
+  "pluginType": "platform",
+  "singular": true,
+  "strictValidation": false,
+  "headerDisplay": "Homebridge Plugin Providing HomeClimate Air Purifier Support.",
+  "schema": {
+    "type": "object",
+    "required": ["name","username","password"],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "title": "名称",
+        "type": "string",
+        "default": "Home Climate"
+      },
+      "username": {
+        "title": "用户名",
+        "type": "string",
+        "default": "Home Climate login username, better to use mobile phone"
+      },
+      "password": {
+        "title": "密码",
+        "type": "string",
+        "default": "Home Climate login password"
+      },
+      "showSleepMode": {
+        "title": "显示睡眠模式",
+        "type": "boolean",
+        "default": false
+      },
+      "showAirQuality": {
+        "title": "显示空气质量",
+        "type": "boolean",
+        "default": false
+      },"showTemperature": {
+        "title": "显示温度",
+        "type": "boolean",
+        "default": false
+      },"showHumidity": {
+        "title": "显示湿度",
+        "type": "boolean",
+        "default": false
+      }
+    }
+  }
+}
